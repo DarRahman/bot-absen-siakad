@@ -2,7 +2,7 @@ name: Automated Campus Attendance System
 
 on:
   schedule:
-    # TUESDAY SCHEDULE
+    # TUESDAY SCHEDULE (UTC = WIB - 7)
     - cron: '0 1 * * 2'   # 08:00 WIB
     - cron: '30 3 * * 2'  # 10:30 WIB
     - cron: '0 6 * * 2'   # 13:00 WIB
@@ -15,21 +15,29 @@ on:
     - cron: '30 3 * * 6'  # 10:30 WIB
     - cron: '0 6 * * 6'   # 13:00 WIB
 
-    # DAILY NIGHTLY SWEEP (To catch missed classes)
+    # DAILY NIGHTLY SWEEP (To catch any missed attendance)
     - cron: '0 14 * * *'  # 21:00 WIB Everyday
 
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual run
 
 jobs:
   attendance-job:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-      - run: pip install selenium
-      - env:
+
+      - name: Install Selenium
+        run: pip install selenium
+
+      - name: Run Attendance Bot
+        env:
           NIM_KAMPUS: ${{ secrets.NIM_KAMPUS }}
           PW_KAMPUS: ${{ secrets.PW_KAMPUS }}
+          PYTHONUNBUFFERED: 1  # Force real-time logs in GitHub Actions
         run: python bot_absen_cloud.py
