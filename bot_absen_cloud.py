@@ -12,8 +12,6 @@ def setup_driver():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
-    
-    # Block geolocation popups
     chrome_options.add_experimental_option("prefs", {
         "profile.default_content_setting_values.geolocation": 2
     })
@@ -33,11 +31,9 @@ def perform_login(driver, nim, password):
         pw_field.clear()
         pw_field.send_keys(password)
         pw_field.send_keys(Keys.ENTER)
-        time.sleep(8)
+        time.sleep(10) # Increased wait for slow campus server
 
     fill_form()
-    
-    # Handle the specific 'double login' bug of the campus website
     if "dashboard" not in driver.current_url.lower():
         print("[!] Bug detected: Session not created. Attempting retry...")
         fill_form()
@@ -46,7 +42,6 @@ def main():
     NIM = os.environ.get('NIM_KAMPUS')
     PW = os.environ.get('PW_KAMPUS')
     
-    # Set run limits: Try for 2.5 hours, refresh every 30 minutes
     TIMEOUT_DURATION = 2.5 * 3600 
     REFRESH_INTERVAL = 30 * 60 
     start_time = time.time()
@@ -57,40 +52,47 @@ def main():
         perform_login(driver, NIM, PW)
         
         if "dashboard" not in driver.current_url.lower():
-            print("❌ FAILED: Unable to reach Dashboard. Please check Secrets/Credentials.")
+            print("❌ FAILED: Unable to reach Dashboard.")
             return
 
         print("✅ SUCCESS: Login achieved. Entering monitoring loop.")
 
-        # Main Monitoring Loop
         while (time.time() - start_time) < TIMEOUT_DURATION:
             print(f"[*] Scanning for attendance button at {time.strftime('%H:%M:%S')}...")
             
             try:
-                # Targeted XPath based on the inspected link in your screenshot
-                attendance_btn = driver.find_element(By.XPATH, "//a[contains(@href, 'aksi absen masuk.php')]")
+                # NEW AGGRESSIVE XPATH:
+                # Search for any link (<a>) that HAS the text 'ABSEN' and HAS the class 'btn-success'
+                attendance_btn = driver.find_element(By.XPATH, "//a[contains(text(), 'ABSEN') and contains(@class, 'btn-success')]")
                 
                 if attendance_btn:
                     print("🚀 FOUND: Attendance button detected! Executing click...")
+                    # Scroll to element just in case
+                    driver.execute_script("arguments[0].scrollIntoView();", attendance_btn)
+                    time.sleep(2)
                     attendance_btn.click()
-                    time.sleep(5) # Wait for processing
+                    time.sleep(10) # Wait longer for the 'Berhasil' message
                     print("✅ FINAL STATUS: Attendance recorded successfully!")
-                    return # Exit script on success
+                    return 
             
             except:
-                print(f"[-] Status: Button not found. Resting for 30 minutes...")
+                # SECOND ATTEMPT XPATH: Just in case the text is lowercase
+                try:
+                    attendance_btn = driver.find_element(By.XPATH, "//a[contains(@href, 'absen') and contains(@class, 'btn-success')]")
+                    attendance_btn.click()
+                    print("✅ FINAL STATUS: Attendance recorded (Attempt 2)!")
+                    return
+                except:
+                    print(f"[-] Status: Button not found yet.")
             
-            # Efficient refresh logic
+            print(f"Waiting {REFRESH_INTERVAL/60} minutes before next refresh...")
             time.sleep(REFRESH_INTERVAL)
             driver.refresh()
             time.sleep(5)
 
-        print("⌛ TIMEOUT: The monitoring window closed. Button never appeared.")
-
     except Exception as e:
         print(f"⚠️ CRITICAL ERROR: {str(e)}")
     finally:
-        print("Closing session and terminating driver.")
         driver.quit()
 
 if __name__ == "__main__":
