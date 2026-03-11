@@ -2,42 +2,29 @@ name: Automated Campus Attendance System
 
 on:
   schedule:
-    # TUESDAY SCHEDULE (UTC = WIB - 7)
-    - cron: '0 1 * * 2'   # 08:00 WIB
-    - cron: '30 3 * * 2'  # 10:30 WIB
-    - cron: '0 6 * * 2'   # 13:00 WIB
+    - cron: '0 1 * * 2'   # 08:00 WIB Selasa
+    - cron: '30 3 * * 2'  # 10:30 WIB Selasa
+    - cron: '0 6 * * 2'   # 13:00 WIB Selasa
+    - cron: '0 1 * * 3'   # 08:00 WIB Rabu
+    - cron: '0 6 * * 3'   # 13:00 WIB Rabu
+    - cron: '30 3 * * 6'  # 10:30 WIB Sabtu
+    - cron: '0 6 * * 6'   # 13:00 WIB Sabtu
+    - cron: '0 14 * * *'  # 21:00 WIB Sapu Bersih (Harian)
 
-    # WEDNESDAY SCHEDULE
-    - cron: '0 1 * * 3'   # 08:00 WIB
-    - cron: '0 6 * * 3'   # 13:00 WIB
-
-    # SATURDAY SCHEDULE
-    - cron: '30 3 * * 6'  # 10:30 WIB
-    - cron: '0 6 * * 6'   # 13:00 WIB
-
-    # DAILY NIGHTLY SWEEP (To catch any missed attendance)
-    - cron: '0 14 * * *'  # 21:00 WIB Everyday
-
-  workflow_dispatch: # Allows manual run
+  workflow_dispatch:
 
 jobs:
   attendance-job:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-
-      - name: Install Selenium
-        run: pip install selenium
-
-      - name: Run Attendance Bot
-        env:
+      - run: pip install selenium requests
+      - env:
           NIM_KAMPUS: ${{ secrets.NIM_KAMPUS }}
           PW_KAMPUS: ${{ secrets.PW_KAMPUS }}
-          PYTHONUNBUFFERED: 1  # Force real-time logs in GitHub Actions
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }} # Pastikan secret ini sudah diisi di Settings
+          PYTHONUNBUFFERED: 1
         run: python bot_absen_cloud.py
