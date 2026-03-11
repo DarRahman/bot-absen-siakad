@@ -1,44 +1,35 @@
 name: Automated Campus Attendance System
 
 on:
-  # Automated schedule using CRON syntax (UTC Timezone)
-  # WIB is UTC + 7 hours
   schedule:
     # TUESDAY SCHEDULE
-    - cron: '0 1 * * 2'   # 08:00 WIB - APSI
-    - cron: '30 3 * * 2'  # 10:30 WIB - Metode Numerik
-    - cron: '0 6 * * 2'   # 13:00 WIB - Microcontroller
+    - cron: '0 1 * * 2'   # 08:00 WIB
+    - cron: '30 3 * * 2'  # 10:30 WIB
+    - cron: '0 6 * * 2'   # 13:00 WIB
 
     # WEDNESDAY SCHEDULE
-    - cron: '0 1 * * 3'   # 08:00 WIB - Jaringan Komputer (change for testing)
-    - cron: '0 6 * * 3'   # 13:00 WIB - Sistem Operasi
+    - cron: '0 1 * * 3'   # 08:00 WIB
+    - cron: '0 6 * * 3'   # 13:00 WIB
 
     # SATURDAY SCHEDULE
-    - cron: '30 3 * * 6'  # 10:30 WIB - Pemrograman Web
-    - cron: '0 6 * * 6'   # 13:00 WIB - Kecerdasan Buatan
+    - cron: '30 3 * * 6'  # 10:30 WIB
+    - cron: '0 6 * * 6'   # 13:00 WIB
 
-  # Allows manual trigger for testing via GitHub UI
+    # DAILY NIGHTLY SWEEP (To catch missed classes)
+    - cron: '0 14 * * *'  # 21:00 WIB Everyday
+
   workflow_dispatch:
 
 jobs:
   attendance-job:
-    name: Execute Attendance Bot
     runs-on: ubuntu-latest
-    
     steps:
-      - name: 1. Checkout Repository Code
-        uses: actions/checkout@v3
-
-      - name: 2. Initialize Python Environment
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-
-      - name: 3. Install Selenium Library
-        run: pip install selenium
-
-      - name: 4. Run Attendance Script
-        env:
+      - run: pip install selenium
+      - env:
           NIM_KAMPUS: ${{ secrets.NIM_KAMPUS }}
           PW_KAMPUS: ${{ secrets.PW_KAMPUS }}
         run: python bot_absen_cloud.py
