@@ -4,6 +4,8 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 def setup_driver():
     """Initializes the Chrome driver with headless options for cloud execution."""
@@ -41,6 +43,54 @@ def perform_login(driver, nim, password):
     except Exception as e:
         print(f"[!] Error during form submission: {e}")
 
+def perform_attendance(driver):
+    """Navigates to the attendance page and clicks the attendance button."""
+    try:
+        print("\n[2] Navigating to Attendance (Absen) page...")
+        absen_url = "https://siakad.stikompoltekcirebon.ac.id/index.php?module=absen"
+        driver.get(absen_url)
+
+        wait = WebDriverWait(driver, 15)
+        # Wait until the page body is present before searching for buttons
+        wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+
+        # Find all available "Absen" / attendance buttons on the page
+        # translate() maps both upper and lower case letters to lowercase for case-insensitive match
+        absen_buttons = driver.find_elements(By.XPATH,
+            "//button[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'absen')] | "
+            "//a[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'absen') and contains(@href, 'absen')]"
+        )
+
+        if not absen_buttons:
+            # Fallback: look for any submit/action button inside attendance rows
+            absen_buttons = driver.find_elements(By.XPATH,
+                "//input[@type='submit' and contains(translate(@value, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'absen')] | "
+                "//button[contains(@class, 'absen') or contains(@id, 'absen')]"
+            )
+
+        if absen_buttons:
+            clicked = 0
+            for btn in absen_buttons:
+                try:
+                    driver.execute_script("arguments[0].scrollIntoView(true);", btn)
+                    btn.click()
+                    time.sleep(2)
+                    clicked += 1
+                    print(f"  ✅ Clicked attendance button #{clicked}: {btn.text or btn.get_attribute('value')}")
+                except Exception as e:
+                    print(f"  [!] Could not click button: {e}")
+            if clicked > 0:
+                print(f"\n✅ SUCCESS: Marked attendance for {clicked} session(s).")
+            else:
+                print("\n⚠️ WARNING: Found attendance buttons but could not click any.")
+        else:
+            print("\n⚠️ WARNING: No attendance buttons found. The attendance window may be closed,")
+            print("  or the page structure has changed. Please verify manually.")
+            print(f"  Current URL: {driver.current_url}")
+
+    except Exception as e:
+        print(f"\n⚠️ ERROR during attendance: {e}")
+
 def main():
     # Retrieve credentials from GitHub Secrets
     NIM = os.environ.get('NIM_KAMPUS')
@@ -61,14 +111,14 @@ def main():
             print("[!] Bug detected: Redirected back to login. Retrying (Attempt 2)...")
             perform_login(driver, NIM, PW)
 
-        # Step 3: Verify Success
+        # Step 3: Verify Login Success
         if "dashboard" in driver.current_url.lower():
-            print("\n✅ SUCCESS: Bot successfully reached the Dashboard in the Cloud!")
+            print("\n✅ SUCCESS: Bot successfully reached the Dashboard!")
             print(f"Current URL: {driver.current_url}")
-            
-            # This is where we will add Part 2 (Auto-Click Attendance) later
-            # For now, we only test the cloud login capability
-            
+
+            # Step 4: Perform Attendance (Auto-Click)
+            perform_attendance(driver)
+
         else:
             print("\n❌ FAILED: Login failed. Please check credentials or server status.")
             print(f"Ending URL: {driver.current_url}")
