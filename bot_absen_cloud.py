@@ -6,46 +6,49 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
 
 def setup_driver():
-    """Initializes the Chrome driver for cloud environment (Headless)."""
+    """Initializes the Chrome driver for headless cloud environment."""
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
-    # Disable geolocation popups automatically
+    
+    # Block geolocation popups
     chrome_options.add_experimental_option("prefs", {
         "profile.default_content_setting_values.geolocation": 2
     })
     return webdriver.Chrome(options=chrome_options)
 
 def perform_login(driver, nim, password):
-    """Handles the login process with retry logic for the double-login bug."""
+    """Handles authentication with session retry logic."""
+    print("[1] Opening SIAKAD login page...")
     driver.get("https://siakad.stikompoltekcirebon.ac.id/index.php")
-    time.sleep(3)
+    time.sleep(5)
     
-    def fill_and_submit():
+    def fill_form():
+        print(f"[*] Typing credentials for NIM: {nim}...")
         driver.find_element(By.NAME, "username").clear()
         driver.find_element(By.NAME, "username").send_keys(nim)
         pw_field = driver.find_element(By.NAME, "password")
         pw_field.clear()
         pw_field.send_keys(password)
         pw_field.send_keys(Keys.ENTER)
-        time.sleep(7)
+        time.sleep(8)
 
-    fill_and_submit()
-    # Retry if session bug occurs (redirected back to index)
+    fill_form()
+    
+    # Handle the specific 'double login' bug of the campus website
     if "dashboard" not in driver.current_url.lower():
-        print("[!] Bug detected: Session not created. Retrying login...")
-        fill_and_submit()
+        print("[!] Bug detected: Session not created. Attempting retry...")
+        fill_form()
 
 def main():
-    # Load credentials from GitHub Secrets
     NIM = os.environ.get('NIM_KAMPUS')
     PW = os.environ.get('PW_KAMPUS')
     
-    # Configuration: Try for 2.5 hours, refresh every 30 minutes
-    TIMEOUT = 2.5 * 3600 # 2.5 hours in seconds
-    REFRESH_INTERVAL = 30 * 60 # 30 minutes in seconds
+    # Set run limits: Try for 2.5 hours, refresh every 30 minutes
+    TIMEOUT_DURATION = 2.5 * 3600 
+    REFRESH_INTERVAL = 30 * 60 
     start_time = time.time()
     
     driver = setup_driver()
@@ -54,39 +57,40 @@ def main():
         perform_login(driver, NIM, PW)
         
         if "dashboard" not in driver.current_url.lower():
-            print("❌ Critical: Login failed after retries.")
+            print("❌ FAILED: Unable to reach Dashboard. Please check Secrets/Credentials.")
             return
 
-        print("✅ Login Successful. Entering monitoring mode...")
+        print("✅ SUCCESS: Login achieved. Entering monitoring loop.")
 
-        # Monitoring Loop
-        while (time.time() - start_time) < TIMEOUT:
-            print(f"[*] Checking for attendance button at {time.strftime('%H:%M:%S')}...")
+        # Main Monitoring Loop
+        while (time.time() - start_time) < TIMEOUT_DURATION:
+            print(f"[*] Scanning for attendance button at {time.strftime('%H:%M:%S')}...")
             
             try:
-                # Find the link that contains 'aksi absen masuk.php' in the href
-                # Based on the inspected HTML element
+                # Targeted XPath based on the inspected link in your screenshot
                 attendance_btn = driver.find_element(By.XPATH, "//a[contains(@href, 'aksi absen masuk.php')]")
                 
                 if attendance_btn:
-                    print("🚀 Attendance button FOUND! Clicking now...")
+                    print("🚀 FOUND: Attendance button detected! Executing click...")
                     attendance_btn.click()
                     time.sleep(5) # Wait for processing
-                    print("✅ SUCCESS: Attendance has been recorded automatically!")
-                    return # Exit script after success
+                    print("✅ FINAL STATUS: Attendance recorded successfully!")
+                    return # Exit script on success
             
             except:
-                print(f"[-] Button not found. Waiting 30 minutes before next refresh...")
+                print(f"[-] Status: Button not found. Resting for 30 minutes...")
             
+            # Efficient refresh logic
             time.sleep(REFRESH_INTERVAL)
             driver.refresh()
             time.sleep(5)
 
-        print("⌛ Timeout reached: The attendance button never appeared.")
+        print("⌛ TIMEOUT: The monitoring window closed. Button never appeared.")
 
     except Exception as e:
-        print(f"⚠️ Error: {str(e)}")
+        print(f"⚠️ CRITICAL ERROR: {str(e)}")
     finally:
+        print("Closing session and terminating driver.")
         driver.quit()
 
 if __name__ == "__main__":
