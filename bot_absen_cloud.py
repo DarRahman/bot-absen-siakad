@@ -6,77 +6,87 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
 
 def setup_driver():
-    """Initializes the Chrome driver with headless options for cloud execution."""
+    """Initializes the Chrome driver for cloud environment (Headless)."""
     chrome_options = Options()
-    chrome_options.add_argument("--headless")  # Runs Chrome in the background
+    chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
-    
-    # Disable geolocation popups
+    # Disable geolocation popups automatically
     chrome_options.add_experimental_option("prefs", {
         "profile.default_content_setting_values.geolocation": 2
     })
-    
     return webdriver.Chrome(options=chrome_options)
 
 def perform_login(driver, nim, password):
-    """Fills the login form and submits."""
-    try:
-        print(f"[*] Attempting to login with NIM: {nim}")
-        
-        # Locate and fill the username field
-        username_field = driver.find_element(By.NAME, "username")
-        username_field.clear()
-        username_field.send_keys(nim)
+    """Handles the login process with retry logic for the double-login bug."""
+    driver.get("https://siakad.stikompoltekcirebon.ac.id/index.php")
+    time.sleep(3)
+    
+    def fill_and_submit():
+        driver.find_element(By.NAME, "username").clear()
+        driver.find_element(By.NAME, "username").send_keys(nim)
+        pw_field = driver.find_element(By.NAME, "password")
+        pw_field.clear()
+        pw_field.send_keys(password)
+        pw_field.send_keys(Keys.ENTER)
+        time.sleep(7)
 
-        # Locate and fill the password field
-        password_field = driver.find_element(By.NAME, "password")
-        password_field.clear()
-        password_field.send_keys(password)
-
-        # Submit the form using ENTER key
-        password_field.send_keys(Keys.ENTER)
-        time.sleep(7)  # Wait for server response
-    except Exception as e:
-        print(f"[!] Error during form submission: {e}")
+    fill_and_submit()
+    # Retry if session bug occurs (redirected back to index)
+    if "dashboard" not in driver.current_url.lower():
+        print("[!] Bug detected: Session not created. Retrying login...")
+        fill_and_submit()
 
 def main():
-    # Retrieve credentials from GitHub Secrets
+    # Load credentials from GitHub Secrets
     NIM = os.environ.get('NIM_KAMPUS')
     PW = os.environ.get('PW_KAMPUS')
-    TARGET_URL = "https://siakad.stikompoltekcirebon.ac.id/index.php"
-
+    
+    # Configuration: Try for 2.5 hours, refresh every 30 minutes
+    TIMEOUT = 2.5 * 3600 # 2.5 hours in seconds
+    REFRESH_INTERVAL = 30 * 60 # 30 minutes in seconds
+    start_time = time.time()
+    
     driver = setup_driver()
-
+    
     try:
-        # Step 1: Initial Login Attempt
-        print("[1] Opening SIAKAD login page...")
-        driver.get(TARGET_URL)
         perform_login(driver, NIM, PW)
-
-        # Step 2: Handle "Double Login" Bug
-        # If still on index page, retry login
+        
         if "dashboard" not in driver.current_url.lower():
-            print("[!] Bug detected: Redirected back to login. Retrying (Attempt 2)...")
-            perform_login(driver, NIM, PW)
+            print("❌ Critical: Login failed after retries.")
+            return
 
-        # Step 3: Verify Success
-        if "dashboard" in driver.current_url.lower():
-            print("\n✅ SUCCESS: Bot successfully reached the Dashboard in the Cloud!")
-            print(f"Current URL: {driver.current_url}")
+        print("✅ Login Successful. Entering monitoring mode...")
+
+        # Monitoring Loop
+        while (time.time() - start_time) < TIMEOUT:
+            print(f"[*] Checking for attendance button at {time.strftime('%H:%M:%S')}...")
             
-            # This is where we will add Part 2 (Auto-Click Attendance) later
-            # For now, we only test the cloud login capability
+            try:
+                # Find the link that contains 'aksi absen masuk.php' in the href
+                # Based on the inspected HTML element
+                attendance_btn = driver.find_element(By.XPATH, "//a[contains(@href, 'aksi absen masuk.php')]")
+                
+                if attendance_btn:
+                    print("🚀 Attendance button FOUND! Clicking now...")
+                    attendance_btn.click()
+                    time.sleep(5) # Wait for processing
+                    print("✅ SUCCESS: Attendance has been recorded automatically!")
+                    return # Exit script after success
             
-        else:
-            print("\n❌ FAILED: Login failed. Please check credentials or server status.")
-            print(f"Ending URL: {driver.current_url}")
+            except:
+                print(f"[-] Button not found. Waiting 30 minutes before next refresh...")
+            
+            time.sleep(REFRESH_INTERVAL)
+            driver.refresh()
+            time.sleep(5)
+
+        print("⌛ Timeout reached: The attendance button never appeared.")
 
     except Exception as e:
-        print(f"\n⚠️ CRITICAL ERROR: {e}")
+        print(f"⚠️ Error: {str(e)}")
     finally:
-        print("Closing browser and terminating process.")
         driver.quit()
 
 if __name__ == "__main__":
