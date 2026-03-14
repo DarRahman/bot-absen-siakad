@@ -3,24 +3,24 @@ name: Automated Campus Attendance System
 on:
   schedule:
     # --- TUESDAY ---
-    - cron: '5 1 * * 2'   # 08:05 WIB (Patient Mode)
-    - cron: '35 3 * * 2'  # 10:35 WIB (Patient Mode)
-    - cron: '5 6 * * 2'   # 13:05 WIB (Patient Mode)
-    - cron: '35 8 * * 2'  # 15:35 WIB (Instant Mode)
+    - cron: '5 1 * * 2'   # 08:05 WIB
+    - cron: '35 3 * * 2'  # 10:35 WIB
+    - cron: '5 6 * * 2'   # 13:05 WIB
+    - cron: '35 8 * * 2'  # 15:35 WIB
 
     # --- WEDNESDAY ---
-    - cron: '5 1 * * 3'   # 08:05 WIB (Patient Mode)
-    - cron: '35 3 * * 3'  # 10:35 WIB (Instant Mode)
-    - cron: '5 6 * * 3'   # 13:05 WIB (Patient Mode)
-    - cron: '50 7 * * 3'  # 14:50 WIB (Instant Mode)
+    - cron: '5 1 * * 3'   # 08:05 WIB
+    - cron: '35 3 * * 3'  # 10:35 WIB
+    - cron: '5 6 * * 3'   # 13:05 WIB
+    - cron: '50 7 * * 3'  # 14:50 WIB
 
     # --- SATURDAY ---
-    - cron: '35 3 * * 6'  # 10:35 WIB (Patient Mode)
-    - cron: '5 6 * * 6'   # 13:05 WIB (Patient Mode)
-    - cron: '35 8 * * 6'  # 15:35 WIB (Instant Mode)
+    - cron: '35 3 * * 6'  # 10:35 WIB
+    - cron: '5 6 * * 6'   # 13:05 WIB
+    - cron: '35 8 * * 6'  # 15:35 WIB
 
-    # --- NIGHTLY SWEEP (Tue, Wed, Sat) ---
-    - cron: '0 14 * * 2,3,6' # 21:00 WIB (Instant Mode)
+    # --- NIGHTLY SWEEP ---
+    - cron: '0 14 * * 2,3,6' # 21:00 WIB (Tue, Wed, Sat)
 
   workflow_dispatch:
 
@@ -28,21 +28,22 @@ jobs:
   attendance-job:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout Codebase
         uses: actions/checkout@v4
 
-      - name: Setup Python Environment
+      - name: Setup Python 3.12
         uses: actions/setup-python@v4
         with:
           python-version: '3.12'
 
-      - name: Install Dependencies
+      - name: Install Selenium & Requests
         run: pip install selenium requests
 
-      - name: Execute Attendance Script
+      - name: Execute Attendance Bot
         env:
           NIM_KAMPUS: ${{ secrets.NIM_KAMPUS }}
           PW_KAMPUS: ${{ secrets.PW_KAMPUS }}
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           PYTHONUNBUFFERED: 1
+          TZ: Asia/Jakarta # Syncs the container time to WIB
         run: python bot_absen_cloud.py
