@@ -1,57 +1,59 @@
 import os
 import time
 import requests
+from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.keys import Keys
 
-def notify_discord(message, status="info"):
-    """Sends an embedded notification to Discord.
-    Status 'success' = Green, 'error' = Red, 'info' = Blue.
+def notify_discord(title, message, status="info"):
+    """
+    Sends a professional Embed notification to Discord.
+    Status colors: Green for success, Red for error, Blue for info.
     """
     webhook_url = os.environ.get('DISCORD_WEBHOOK')
     if not webhook_url:
         return
 
-    # Color mapping: Green (3066993), Red (15158332), Blue (3447003)
+    # Discord color decimal codes
     colors = {"success": 3066993, "error": 15158332, "info": 3447003}
-    color = colors.get(status, 3447003)
     
     payload = {
         "embeds": [{
-            "title": "Sistem Absensi SIAKAD",
+            "title": title,
             "description": message,
-            "color": color,
-            "footer": {"text": "Otomatisasi GitHub Actions • STIKOM Poltek Cirebon"},
+            "color": colors.get(status, 3447003),
+            "footer": {"text": "STIKOM Poltek Cirebon • Automated Service"},
             "timestamp": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
         }]
     }
     try:
         requests.post(webhook_url, json=payload)
     except Exception as e:
-        print(f"Gagal mengirim notif Discord: {e}")
+        print(f"Failed to send Discord notification: {e}")
 
 def setup_driver():
-    """Initializes Chrome in headless mode for cloud environments."""
+    """Initializes a headless Chrome instance optimized for Cloud environments."""
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
+    # Automatically block geolocation popups to prevent script hang
     chrome_options.add_experimental_option("prefs", {
         "profile.default_content_setting_values.geolocation": 2
     })
     return webdriver.Chrome(options=chrome_options)
 
 def perform_login(driver, nim, password):
-    """Handles authentication and retries for the double-login bug."""
-    print("[1] Membuka halaman login SIAKAD...")
+    """Handles the authentication process with session retry logic."""
+    print("[1] Mengakses halaman login SIAKAD...")
     driver.get("https://siakad.stikompoltekcirebon.ac.id/index.php")
     time.sleep(5)
     
-    def fill_form():
-        print(f"[*] Memasukkan NIM: {nim}...")
+    def submit_credentials():
+        print(f"[*] Memasukkan kredensial...")
         driver.find_element(By.NAME, "username").clear()
         driver.find_element(By.NAME, "username").send_keys(nim)
         pw_field = driver.find_element(By.NAME, "password")
@@ -60,77 +62,80 @@ def perform_login(driver, nim, password):
         pw_field.send_keys(Keys.ENTER)
         time.sleep(10)
 
-    fill_form()
-    # Check if still on index (campus web bug)
+    submit_credentials()
+    
+    # Check for the specific 'double login' bug of the campus portal
     if "dashboard" not in driver.current_url.lower():
-        print("[!] Bug terdeteksi: Sesi tidak dibuat. Mencoba login ulang...")
-        fill_form()
+        print("[!] Sesi gagal dibuat. Melakukan login ulang (Retry)...")
+        submit_credentials()
 
 def main():
+    # Load secrets from environment variables
     NIM = os.environ.get('NIM_KAMPUS')
     PW = os.environ.get('PW_KAMPUS')
     
-    # Send 'Started' notification to Discord
-    notify_discord(f"🤖 **Bot Mulai Bekerja**\nNIM: `{NIM}`\nStatus: Mencoba Login...", "info")
+    # Determine Mode based on current UTC hour (WIB - 7)
+    # Start windows (08:00, 10:30, 13:00) correspond to UTC (1, 3, 6)
+    utc_hour = datetime.utcnow().hour
+    is_patient_mode = utc_hour in [1, 3, 6]
     
-    # 2.5 hours monitoring window, refresh every 30 minutes
-    TIMEOUT = 2.5 * 3600 
-    REFRESH_INTERVAL = 30 * 60 
+    # Configuration: 30-min monitoring for starts, instant check for ends
+    TIMEOUT = 30 * 60 if is_patient_mode else 1
+    INTERVAL = 5 * 60 if is_patient_mode else 0
+    
+    print(f"[*] Mode: {'SABAR (30m)' if is_patient_mode else 'INSTAN (1x Cek)'}")
     start_time = time.time()
-    
     driver = setup_driver()
     
     try:
         perform_login(driver, NIM, PW)
         
         if "dashboard" not in driver.current_url.lower():
-            print("❌ Login Gagal.")
-            notify_discord(f"❌ **Login Gagal!**\nNIM: `{NIM}`\nBot berhenti karena tidak bisa masuk dashboard.", "error")
+            notify_discord("❌ Login Gagal", "Sistem tidak dapat mengakses Dashboard SIAKAD.", "error")
             return
 
-        print("✅ Login Berhasil.")
-
-        # Main Monitoring Loop
-        while (time.time() - start_time) < TIMEOUT:
-            current_time = time.strftime('%H:%M:%S')
-            print(f"[*] Mencari tombol absen pada pukul {current_time}...")
-            
+        print("✅ Berhasil masuk ke Dashboard.")
+        
+        while True:
             try:
-                # Find button using professional XPath
-                attendance_btn = driver.find_element(By.XPATH, "//a[contains(text(), 'ABSEN') and contains(@class, 'btn-success')]")
+                # Search for the green 'ABSEN' button link
+                btn = driver.find_element(By.XPATH, "//a[contains(text(), 'ABSEN') and contains(@class, 'btn-success')]")
                 
-                if attendance_btn:
-                    print("🚀 Tombol ABSEN ditemukan! Sedang mengklik...")
-                    driver.execute_script("arguments[0].scrollIntoView();", attendance_btn)
-                    time.sleep(2)
-                    attendance_btn.click()
-                    time.sleep(10)
+                if btn:
+                    # Scrape the course name from the card title
+                    try:
+                        matkul = driver.find_element(By.XPATH, "//h3[contains(@class, 'card-category')]").text
+                    except:
+                        matkul = "Tidak Terdeteksi"
                     
-                    # Send 'Success' notification
-                    success_msg = f"✅ **Absen Berhasil!**\nNIM: `{NIM}`\nStatus: Sudah diklik otomatis oleh Bot."
-                    notify_discord(success_msg, "success")
-                    print(success_msg)
+                    # Scroll and execute click
+                    driver.execute_script("arguments[0].scrollIntoView();", btn)
+                    time.sleep(2)
+                    btn.click()
+                    time.sleep(5)
+                    
+                    # Prepare and send success notification
+                    waktu_absen = time.strftime('%H:%M:%S WIB')
+                    msg = f"**Mata Kuliah:** {matkul}\n**Jam:** {waktu_absen}\n**Status:** Absen Berhasil Diklik"
+                    notify_discord("✅ Absen Otomatis Berhasil", msg, "success")
+                    print(f"[!] {msg}")
                     return 
             except:
-                print("[-] Tombol belum muncul.")
+                print(f"[-] Tombol belum ditemukan pada {time.strftime('%H:%M:%S')}")
             
-            # Wait for 30 minutes before next check
-            print(f"Menunggu {REFRESH_INTERVAL/60} menit sebelum refresh halaman...")
-            time.sleep(REFRESH_INTERVAL)
+            # Exit loop if instant mode or timeout reached
+            if not is_patient_mode or (time.time() - start_time) > TIMEOUT:
+                print("[*] Sesi monitoring berakhir.")
+                break
+            
+            time.sleep(INTERVAL)
             driver.refresh()
             time.sleep(5)
 
-        # If timeout reached
-        timeout_msg = f"⌛ **Sesi Berakhir (Timeout)**\nNIM: `{NIM}`\nTombol absen tidak ditemukan sampai batas waktu berakhir."
-        notify_discord(timeout_msg, "info")
-        print(timeout_msg)
-
     except Exception as e:
-        err_msg = f"⚠️ **Kesalahan Fatal Sistem:**\n```{str(e)}```"
-        notify_discord(err_msg, "error")
-        print(err_msg)
+        print(f"⚠️ Error: {str(e)}")
+        notify_discord("⚠️ Kesalahan Sistem", f"Terjadi error: ```{str(e)}```", "error")
     finally:
-        print("Menutup browser dan mengakhiri script.")
         driver.quit()
 
 if __name__ == "__main__":
